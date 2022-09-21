@@ -92,7 +92,7 @@ pub fn decode_impl<const ALPHA: bool>(src: &[u8], dest: &mut [u8], header: Heade
                 array[prev.hash() as usize] = prev;
             }
             b => {
-                match b & 0xC0 {
+                match (b & 0xC0) >> 6 {
                     // QOI_OP_INDEX
                     0b00 => {
                         let qoi_ix = (b & 0x3F) as usize;
@@ -144,8 +144,8 @@ pub fn decode_impl<const ALPHA: bool>(src: &[u8], dest: &mut [u8], header: Heade
                     // QOI_OP_LUMA
                     0b10 => {
                         let dg = (b & 0x3F) as i8 - 32;
-                        let dr_dg = (src[ix+1] & 0xF0) as i8 - 8;
-                        let db_dg = (src[ix+1] & 0x0F) as i8 - 8;
+                        let dr_dg = ((src[ix+1] & 0xF0) as i8).wrapping_sub(8);
+                        let db_dg = ((src[ix+1] & 0x0F) as i8).wrapping_sub(8);
                         
                         //dr_dg = (cur_px.r - prev_px.r) - (cur_px.g - prev_px.g)
                         //db_dg = (cur_px.b - prev_px.b) - (cur_px.g - prev_px.g)

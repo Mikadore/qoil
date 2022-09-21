@@ -1,6 +1,8 @@
 use thiserror::Error;
 
 mod detail;
+#[cfg(test)]
+mod test;
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
@@ -14,7 +16,7 @@ pub enum Error {
 
 macro_rules! ensure {
     ($cond:expr, $err:expr) => {
-        if $cond {
+        if !$cond {
             return Err($err);
         }
     };
@@ -37,7 +39,7 @@ pub struct Header {
 
 pub fn decode_header(data: impl AsRef<[u8]>) -> Result<Header, Error> {
     let slice = data.as_ref();
-    ensure!(slice.len() < 14, Error::buff(slice.len(), 14));
+    ensure!(slice.len() >= 14, Error::buff(slice.len(), 14));
 
     let magic = &slice[0..4];
     ensure!(
@@ -69,4 +71,60 @@ pub fn decode_to_buf(data: impl AsRef<[u8]>, mut buf: impl AsMut<[u8]>) -> Resul
         _ => detail::decode_impl::<false>(data.as_ref(), buf.as_mut(), header.clone()),
     }
     .map(|_| header)
+}
+
+/// Decodes the given QOI file data into a supplied buffer.
+/// Always decodes to 3 channels (RGB). The given buffer
+///  must be at least (width * height * 3) big.
+pub fn decode_to_buf_rgb(
+    data: impl AsRef<[u8]>,
+    mut buf: impl AsMut<[u8]>,
+) -> Result<Header, Error> {
+    let header = decode_header(&data)?;
+    detail::decode_impl::<false>(data.as_ref(), buf.as_mut(), header.clone())?;
+
+    Ok(header)
+}
+
+/// Decodes the given QOI file data into a supplied buffer.
+/// Always decodes to 4 channels (RGBA). The given buffer
+///  must be at least (width * height * 4) big.
+pub fn decode_to_buf_rgba(
+    data: impl AsRef<[u8]>,
+    mut buf: impl AsMut<[u8]>,
+) -> Result<Header, Error> {
+    let header = decode_header(&data)?;
+    detail::decode_impl::<true>(data.as_ref(), buf.as_mut(), header.clone())?;
+
+    Ok(header)
+}
+
+/// Decodes the given QOI file data into a newly allocated Vec.
+/// Uses the same number of channels as defined in the header.
+/// If the channels count isn't 3 or 4, it defaults to 3.
+pub fn decode_to_vec(data: impl AsRef<[u8]>) -> Result<(Header, Vec<u8>), Error> {
+    let header = decode_header(&data)?;
+    let channels = if header.channels == 4 { 4 } else { 3 };
+    let mut v = vec![0; header.width as usize * header.height as usize * channels as usize];
+    match header.channels {
+        4 => detail::decode_impl::<true>(data.as_ref(), &mut v, header.clone()),
+        _ => detail::decode_impl::<false>(data.as_ref(), &mut v, header.clone()),
+    }
+    .map(|_| (header, v))
+}
+
+/// Decodes the given QOI file data into a newly allocated Vec.
+/// Always uses 3 channels (RGB), irrespective of the header.
+pub fn decode_to_vec_rgb(data: impl AsRef<[u8]>) -> Result<(Header, Vec<u8>), Error> {
+    let header = decode_header(&data)?;
+    let mut v = vec![0; header.width as usize * header.height as usize * 3];
+    detail::decode_impl::<false>(data.as_ref(), &mut v, header.clone()).map(|_| (header, v))
+}
+
+/// Decodes the given QOI file data into a newly allocated Vec.
+/// Always uses 4 channels (RGBA), irrespective of the header.
+pub fn decode_to_vec_rgba(data: impl AsRef<[u8]>) -> Result<(Header, Vec<u8>), Error> {
+    let header = decode_header(&data)?;
+    let mut v = vec![0; header.width as usize * header.height as usize * 4 as usize];
+    detail::decode_impl::<true>(data.as_ref(), &mut v, header.clone()).map(|_| (header, v))
 }
